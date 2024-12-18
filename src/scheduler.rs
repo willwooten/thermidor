@@ -47,67 +47,75 @@ impl Scheduler {
                 fs::create_dir_all(parent_dir)?;
             }
         }
+    
         // Reset all tasks to Pending state at the start
         for node in workflow.graph.node_indices() {
             workflow.graph[node].state = TaskState::Pending;
-        }  
-        match toposort(&workflow.graph, None) {
-            Ok(order) => {
-                let mut running_tasks: Vec<JoinHandle<Result<(NodeIndex, TaskState), String>>> = Vec::new();
-                let mut completed = HashSet::new();
-
-                for node in order {
-                    // Wait for tasks whose dependencies haven't completed
-                    running_tasks.retain(|handle| !handle.is_finished());
+        }
     
-                    // Step 3: Check if the task is eligible for scheduling
-                    if workflow.graph[node].state == TaskState::Pending || workflow.graph[node].state == TaskState::Skipped {
-                        // Check if all dependencies of the current task have completed
-                        let all_deps_completed = workflow
-                            .graph
-                            .neighbors_directed(node, petgraph::Incoming)
-                            .all(|dep| completed.contains(&dep));
+        let mut completed = HashSet::new();
     
-                        if all_deps_completed {
-                            let task = workflow.graph[node].clone();
-                            let handle = tokio::spawn(Self::execute_task(node, task));
-                            running_tasks.push(handle);
-                        } else {
-                            info!("Skipping task: {} due to incomplete dependencies", workflow.graph[node].name);
-                            workflow.graph[node].state = TaskState::Skipped;
-                        }
-                    }
-                }
-
-                // Collect completed tasks
-                let completed_nodes = join_all(running_tasks).await;
-                for result in completed_nodes {
-                    match result {
-                        Ok(Ok((node, state))) => {
-                            // Update the graph with the modified task state
-                            workflow.graph[node].state = state;
-                            completed.insert(node);
-
-                            // Save the workflow state after each task execution
-                            if let Err(err) = workflow.save_to_json(&save_path) {
-                                error!("Failed to save workflow state: {}", err);
+        loop {
+            let mut running_tasks: Vec<JoinHandle<Result<(NodeIndex, TaskState), String>>> = Vec::new();
+            let mut progress_made = false;
+    
+            match toposort(&workflow.graph, None) {
+                Ok(order) => {
+                    for node in order {
+                        running_tasks.retain(|handle| !handle.is_finished());
+    
+                        if workflow.graph[node].state == TaskState::Pending || workflow.graph[node].state == TaskState::Skipped {
+                            let all_deps_completed = workflow
+                                .graph
+                                .neighbors_directed(node, petgraph::Incoming)
+                                .all(|dep| completed.contains(&dep));
+    
+                            if all_deps_completed {
+                                let task = workflow.graph[node].clone();
+                                let handle = tokio::spawn(Self::execute_task(node, task));
+                                running_tasks.push(handle);
+                                progress_made = true;
+                            } else {
+                                info!("Skipping task: {} due to incomplete dependencies", workflow.graph[node].name);
+                                workflow.graph[node].state = TaskState::Skipped;
                             }
                         }
-                        Ok(Err(err)) => {
-                            error!("Task execution error: {}", err);
-                        }
-                        Err(join_err) => {
-                            error!("Join error: {}", join_err);
+                    }
+    
+                    // Collect completed tasks
+                    let completed_nodes = join_all(running_tasks).await;
+                    for result in completed_nodes {
+                        match result {
+                            Ok(Ok((node, state))) => {
+                                workflow.graph[node].state = state;
+                                completed.insert(node);
+    
+                                // Save the workflow state after each task execution
+                                if let Err(err) = workflow.save_to_json(&save_path) {
+                                    error!("Failed to save workflow state: {}", err);
+                                }
+                            }
+                            Ok(Err(err)) => {
+                                error!("Task execution error: {}", err);
+                            }
+                            Err(join_err) => {
+                                error!("Join error: {}", join_err);
+                            }
                         }
                     }
+    
+                    // If no progress was made and there are still skipped tasks, break the loop
+                    if !progress_made {
+                        break;
+                    }
                 }
-
-                Ok(())
-            }
-            Err(err) => {
-                error!("Cycle detected in workflow: {:?}", err);
-                Err(Error::new(std::io::ErrorKind::Other, "Cycle detected in workflow"))
+                Err(err) => {
+                    error!("Cycle detected in workflow: {:?}", err);
+                    return Err(Error::new(std::io::ErrorKind::Other, "Cycle detected in workflow"));
+                }
             }
         }
-    }
+    
+        Ok(())
+    }    
 }
