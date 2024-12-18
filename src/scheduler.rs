@@ -1,4 +1,5 @@
 use crate::workflow::Workflow;
+use crate::state::TaskState;
 use petgraph::algo::toposort;
 use petgraph::graph::NodeIndex;
 use std::collections::HashSet;
@@ -20,7 +21,7 @@ impl Scheduler {
     pub async fn run(&self, workflow: &mut Workflow, save_path: &str) -> Result<(), Error> {
         match toposort(&workflow.graph, None) {
             Ok(order) => {
-                let mut running_tasks: Vec<JoinHandle<NodeIndex>> = Vec::new();
+                let mut running_tasks: Vec<JoinHandle<(NodeIndex, TaskState)>> = Vec::new();
                 let mut completed = HashSet::new();
 
                 for node in order {
@@ -40,12 +41,14 @@ impl Scheduler {
                         let handle = tokio::spawn({
                             let mut task_clone = task.clone();
                             async move {
-                                if let Err(err) = task_clone.execute().await {
+                                let state = if let Err(err) = task_clone.execute().await {
                                     error!("Task '{}' failed: {}", task_clone.name, err);
+                                    TaskState::Failure
                                 } else {
                                     info!("Task '{}' completed successfully.", task_clone.name);
-                                }
-                                node
+                                    TaskState::Success
+                                };
+                                (node, state)
                             }
                         });
 
@@ -55,9 +58,9 @@ impl Scheduler {
                     // Collect completed tasks
                     let completed_nodes = join_all(running_tasks.drain(..)).await;
                     for result in completed_nodes {
-                        if let Ok(node) = result {
+                        if let Ok((node, state)) = result {
                             // Update the graph with the modified task state
-                            workflow.graph[node] = workflow.graph[node].clone();
+                            workflow.graph[node].state = state;
                             completed.insert(node);
 
                             // Save the workflow state after each task execution
