@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
+use tokio::task;
 use tracing::info;
 
 
@@ -145,10 +146,12 @@ impl WorkflowBuilder {
     
 }
 
-pub async fn initialize_workflows() -> Vec<Arc<Mutex<Workflow>>> {
+
+// Function to create or load workflows
+pub async fn schedule_workflow() -> Vec<(Arc<Mutex<Workflow>>, String)> {
     let workflows_data = vec![
         // First example workflow
-        ("workflow1.json", vec![
+        ("workflows/workflow1.json", vec![
             (1, "Task 1", "echo Hello from Task 1"),
             (2, "Task 2", "echo Hello from Task 2"),
             (3, "Task 3", "echo Hello from Task 3"),
@@ -158,30 +161,9 @@ pub async fn initialize_workflows() -> Vec<Arc<Mutex<Workflow>>> {
             ("Task 2", "Task 3"),
             ("Task 3", "Task 4"),
         ]),
-
-        // Second example workflow
-        // ("workflow2.json", vec![
-        //     (1, "Download Data", "echo Hello from Task 5"),
-        //     (2, "Process Data", "echo Hello from Task 6"),
-        //     (3, "Generate Report", "echo Hello from Task 7"),
-        // ], vec![
-        //     ("Download Data", "Process Data"),
-        //     ("Process Data", "Generate Report"),
-        // ]),
-
-        // Third example workflow
-        // ("workflow3.json", vec![
-        //     (1, "Compile Code", "cargo build"),
-        //     (2, "Run Tests", "cargo test"),
-        //     (3, "Deploy", "echo Deploying application"),
-        // ], vec![
-        //     ("Compile Code", "Run Tests"),
-        //     ("Run Tests", "Deploy"),
-        // ]),
     ];
 
     let mut workflows = Vec::new();
-    let scheduler = Scheduler::new();
 
     for (save_path, tasks, dependencies) in workflows_data {
         let workflow = Arc::new(Mutex::new(
@@ -209,20 +191,40 @@ pub async fn initialize_workflows() -> Vec<Arc<Mutex<Workflow>>> {
             },
         ));
 
-        // Run the workflow using the scheduler concurrently
-        let workflow_clone = Arc::clone(&workflow);
-        let save_path_clone = save_path.to_string();
-        let scheduler_clone = scheduler.clone();
+        workflows.push((workflow, save_path.to_string()));
+    }
 
-        tokio::spawn(async move {
+    workflows
+}
+
+
+// Function to start the workflows using the scheduler
+async fn _start_workflow(workflows_with_paths: Vec<(Arc<Mutex<Workflow>>, String)>) {
+    let scheduler = Scheduler::new();
+
+    for (workflow, save_path) in workflows_with_paths {
+        let workflow_clone = Arc::clone(&workflow);
+        let scheduler_clone = scheduler.clone();
+        let save_path_clone = save_path.clone();
+
+        task::spawn(async move {
             let mut workflow_guard = workflow_clone.lock().await;
             if let Err(err) = scheduler_clone.run(&mut *workflow_guard, &save_path_clone).await {
                 eprintln!("Error running workflow '{}': {}", save_path_clone, err);
             }
         });
-
-        workflows.push(workflow);
     }
+}
 
-    workflows
+/// Initializes and returns the workflows wrapped in `Arc<Mutex<_>>` for shared access.
+pub async fn start_workflows() -> Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>> {
+    // Schedule workflows by loading them from configuration or creating new ones.
+    let workflows_with_paths = schedule_workflow().await;
+
+    // Start the workflows.
+    _start_workflow(workflows_with_paths.clone()).await;
+
+    // Extract workflows and wrap them for shared access.
+    let workflows: Vec<_> = workflows_with_paths.into_iter().map(|(wf, _)| wf).collect();
+    Arc::new(Mutex::new(workflows))
 }

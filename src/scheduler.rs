@@ -8,6 +8,8 @@ use std::io::{Error, Write};
 use tokio::task::JoinHandle;
 use tracing::{info, error};
 use futures::future::join_all;
+use std::path::Path;
+use std::fs;
 
 #[derive(Clone, Copy)]
 pub struct Scheduler;
@@ -39,6 +41,12 @@ impl Scheduler {
 
     /// Runs the tasks in the workflow based on their dependencies, with parallel execution and state persistence.
     pub async fn run(&self, workflow: &mut Workflow, save_path: &str) -> Result<(), Error> {
+        // Ensure the directory exists
+        if let Some(parent_dir) = Path::new(save_path).parent() {
+            if !parent_dir.exists() {
+                fs::create_dir_all(parent_dir)?;
+            }
+        }
         // Reset all tasks to Pending state at the start
         for node in workflow.graph.node_indices() {
             workflow.graph[node].state = TaskState::Pending;
