@@ -1,6 +1,7 @@
 use crate::workflow::Workflow;
 use petgraph::algo::toposort;
 use std::io::Error;
+use tracing::{info, error};
 
 pub struct Scheduler;
 
@@ -11,15 +12,16 @@ impl Scheduler {
     }
 
     /// Runs the tasks in the workflow based on their dependencies.
-    pub async fn run(&self, workflow: &Workflow) -> Result<(), Error> {
+    pub async fn run(&self, workflow: &mut Workflow) -> Result<(), Error> {
         match toposort(&workflow.graph, None) {
             Ok(order) => {
                 for node in order {
-                    let task = &workflow.graph[node]; // Access the Task instance
-                    println!("Running task: {}", task.name);
+                    let task = &mut workflow.graph[node]; // Access the Task instance
+                    info!("Running task: {}", task.name);
                     if let Err(err) = task.execute().await {
-                        eprintln!("Task '{}' failed: {}", task.name, err);
+                        error!("Task '{}' failed: {}", task.name, err);
                     }
+                    info!("Task '{}' state: {:?}", task.name, task.state);
                 }
                 Ok(())
             }

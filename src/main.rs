@@ -1,13 +1,21 @@
 mod scheduler;
 mod task;
 mod workflow;
+mod state;
 
 use scheduler::Scheduler;
 use task::Task;
 use workflow::Workflow;
+use tracing::info;
+use tracing_subscriber;
 
 #[tokio::main]
 async fn main() {
+    // Initialize the tracing subscriber for logging
+    tracing_subscriber::fmt::init();
+
+    info!("Starting the workflow execution");
+
     // Create a new workflow
     let mut workflow = Workflow::new();
 
@@ -32,7 +40,7 @@ async fn main() {
 
     // Create a scheduler and run the workflow
     let scheduler = Scheduler::new();
-    if let Err(err) = scheduler.run(&workflow).await {
+    if let Err(err) = scheduler.run(&mut workflow).await {
         eprintln!("Error running workflow: {}", err);
     }
 }

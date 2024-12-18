@@ -1,11 +1,15 @@
+use crate::state::TaskState;
 use tokio::process::Command;
 use std::process::Output;
+use chrono::Utc;
+use tracing::{info, error};
 
 #[derive(Debug, Clone)]
 pub struct Task {
     pub id: usize,
     pub name: String,
     pub command: String,
+    pub state: TaskState,
 }
 
 impl Task {
@@ -15,37 +19,54 @@ impl Task {
             id,
             name: name.to_string(),
             command: command.to_string(),
+            state: TaskState::Pending,
         }
     }
 
-    /// Executes the task asynchronously and prints stdout/stderr.
-    pub async fn execute(&self) -> Result<Output, std::io::Error> {
-        println!("Executing task {}: {}", self.id, self.name);
+    /// Executes the task asynchronously and logs stdout/stderr, with execution time tracking.
+    pub async fn execute(&mut self) -> Result<Output, std::io::Error> {
+        self.state = TaskState::Running;
+        let start_time = Utc::now();
+        info!("Executing task {}: {} at {}", self.id, self.name, start_time);
 
-        // Split the command into the executable and arguments
         let parts: Vec<&str> = self.command.split_whitespace().collect();
         let (cmd, args) = parts.split_first().unwrap_or((&"", &[]));
 
-        let output = Command::new(cmd)
-            .args(args)
-            .output()
-            .await;
+        let output = Command::new(cmd).args(args).output().await;
+
+        let end_time = Utc::now();
+        let duration = end_time - start_time;
 
         match &output {
             Ok(result) => {
                 if result.status.success() {
-                    println!("Task '{}' completed successfully.", self.name);
-                    println!("stdout: {}", String::from_utf8_lossy(&result.stdout));
-                } else {
-                    eprintln!(
-                        "Task '{}' failed with exit code: {:?}",
+                    self.state = TaskState::Success;
+                    info!(
+                        "Task '{}' completed successfully in {} seconds.",
                         self.name,
-                        result.status.code()
+                        duration.num_seconds()
                     );
-                    eprintln!("stderr: {}", String::from_utf8_lossy(&result.stderr));
+                    info!("stdout: {}", String::from_utf8_lossy(&result.stdout));
+                } else {
+                    self.state = TaskState::Failure;
+                    error!(
+                        "Task '{}' failed with exit code: {:?} in {} seconds.",
+                        self.name,
+                        result.status.code(),
+                        duration.num_seconds()
+                    );
+                    error!("stderr: {}", String::from_utf8_lossy(&result.stderr));
                 }
             }
-            Err(err) => eprintln!("Failed to execute task '{}': {}", self.name, err),
+            Err(err) => {
+                self.state = TaskState::Failure;
+                error!(
+                    "Failed to execute task '{}': {} in {} seconds.",
+                    self.name,
+                    err,
+                    duration.num_seconds()
+                );
+            }
         }
 
         output
