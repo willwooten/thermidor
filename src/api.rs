@@ -1,9 +1,31 @@
 use crate::workflow::Workflow;
-use axum::{extract::Path, http::StatusCode, response::IntoResponse, Json, Extension};
+use axum::{extract::Path, http::StatusCode, response::IntoResponse, Json, Extension, Router, routing::get};
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::info;
 
+/// Create the API router with routes and workflows.
+pub fn create_app(workflows: Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>) -> Router {
+    Router::new()
+        .route("/workflows", get(list_tasks))
+        .route("/workflow/:workflow_id/task/:id", get(get_task))
+        .route("/workflow/:workflow_id/status", get(get_workflow_status))
+        .layer(Extension(workflows))
+}
+
+/// Start the HTTP server.
+pub async fn run_server(workflows: Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>) {
+    let app = create_app(workflows);
+
+    let addr = "0.0.0.0:3000".parse().unwrap();
+    info!("Listening on http://{}", addr);
+
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+}
 
 pub async fn list_tasks(
     Extension(workflows): Extension<Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>>,
