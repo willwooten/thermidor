@@ -1,10 +1,7 @@
 use crate::task::Task;
 use crate::workflow::Workflow;
-use crate::scheduler::Scheduler;
 use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
-use std::process::Command;
-use tokio::runtime::Runtime;
 
 pub struct WorkflowBuilder {
     workflow: Workflow,
@@ -39,16 +36,16 @@ impl WorkflowBuilder {
     }
 
     /// Runs the workflow using the scheduler.
-    pub fn run(&mut self, save_path: &str) {
-        let scheduler = Scheduler::new();
-        let rt = Runtime::new().unwrap();
+    // pub fn run(&mut self, save_path: &str) {
+    //     let scheduler = Scheduler::new();
+    //     let rt = Runtime::new().unwrap();
 
-        rt.block_on(async {
-            if let Err(err) = scheduler.run(&mut self.workflow, save_path).await {
-                eprintln!("Error running workflow: {}", err);
-            }
-        });
-    }
+    //     rt.block_on(async {
+    //         if let Err(err) = scheduler.run(&mut self.workflow, save_path).await {
+    //             eprintln!("Error running workflow: {}", err);
+    //         }
+    //     });
+    // }
 
     /// Exports the workflow to a PNG image by generating a DOT file and running the dot command.
     // pub fn export_to_png(&self, dot_filename: &str, png_filename: &str) {
@@ -85,12 +82,12 @@ impl WorkflowBuilder {
         self.workflow.clone()
     }
 
-    /// Creates a WorkflowBuilder from an existing workflow.
-    pub fn from_workflow(workflow: Workflow) -> Self {
-        Self {
-            workflow,
-            task_indices: HashMap::new(), // You may need to reconstruct this map
-        }
-    }
+    // Creates a WorkflowBuilder from an existing workflow.
+    // pub fn from_workflow(workflow: Workflow) -> Self {
+    //     Self {
+    //         workflow,
+    //         task_indices: HashMap::new(), // You may need to reconstruct this map
+    //     }
+    // }
     
 }

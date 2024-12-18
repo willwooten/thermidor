@@ -1,4 +1,3 @@
-use petgraph::dot::{Dot, Config};
 use petgraph::graph::{DiGraph, NodeIndex};
 use crate::task::Task;
 use std::fs::File;
