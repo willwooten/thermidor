@@ -4,14 +4,24 @@ use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
+use futures::future::join_all;
+use tower_http::cors::{CorsLayer, AllowOrigin, Any};
 
-/// Create the API router with routes and workflows.
 pub fn create_app(workflows: Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>) -> Router {
     Router::new()
         .route("/workflows", get(list_tasks))
         .route("/workflow/:workflow_id/task/:id", get(get_task))
         .route("/workflow/:workflow_id/status", get(get_workflow_status))
+        .route("/workflow/graph", get(get_workflow_graph))
         .layer(Extension(workflows))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(AllowOrigin::exact(
+                    "http://localhost:3001".parse().unwrap(), // Allow only this specific origin
+                ))
+                .allow_methods(Any) // Allow all HTTP methods
+                .allow_headers(Any), // Allow all headers
+        )
 }
 
 /// Start the HTTP server.
@@ -108,4 +118,45 @@ pub async fn get_workflow_status(
     }
 
     (StatusCode::NOT_FOUND, Json(json!({ "error": "Workflow not found" }))).into_response()
+}
+
+
+pub async fn get_workflow_graph(
+    Extension(workflows): Extension<Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>>,
+) -> Json<serde_json::Value> {
+    let workflows = workflows.lock().await;
+
+    // Create a vector of futures to be awaited
+    let futures: Vec<_> = workflows.iter().enumerate().map(|(i, wf)| {
+        let wf = Arc::clone(wf);
+        async move {
+            let wf_guard = wf.lock().await;
+            let nodes: Vec<_> = wf_guard.graph.node_indices().map(|idx| {
+                let task = &wf_guard.graph[idx];
+                json!({
+                    "id": task.id,
+                    "name": task.name,
+                })
+            }).collect();
+
+            let edges: Vec<_> = wf_guard.graph.edge_indices().map(|edge| {
+                let (source, target) = wf_guard.graph.edge_endpoints(edge).unwrap();
+                json!({
+                    "from": wf_guard.graph[source].id,
+                    "to": wf_guard.graph[target].id,
+                })
+            }).collect();
+
+            json!({
+                "workflow_id": i,
+                "nodes": nodes,
+                "edges": edges,
+            })
+        }
+    }).collect();
+
+    // Await all the futures
+    let graph_data = join_all(futures).await;
+
+    Json(json!({ "workflows": graph_data }))
 }

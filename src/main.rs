@@ -2,7 +2,6 @@ mod scheduler;
 mod task;
 mod workflow;
 mod state;
-mod workflow_builder;
 mod api;
 
 use std::sync::Arc;
