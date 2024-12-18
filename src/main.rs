@@ -2,45 +2,39 @@ mod scheduler;
 mod task;
 mod workflow;
 mod state;
+mod workflow_builder;
 
-use scheduler::Scheduler;
-use task::Task;
-use workflow::Workflow;
 use tracing::info;
-use tracing_subscriber;
+use tracing_subscriber::fmt::init;
+use workflow_builder::WorkflowBuilder;
 
-#[tokio::main]
-async fn main() {
+fn main() {
     // Initialize the tracing subscriber for logging
-    tracing_subscriber::fmt::init();
+    init();
 
     info!("Starting the workflow execution");
 
-    // Create a new workflow
-    let mut workflow = Workflow::new();
+    // Create and configure the workflow using WorkflowBuilder
+    let mut builder = WorkflowBuilder::new();
 
-    // Define tasks
-    let task1 = Task::new(1, "Task 1", "echo Hello from Task 1");
-    let task2 = Task::new(2, "Task 2", "echo Hello from Task 2");
-    let task3 = Task::new(3, "Task 3", "echo Hello from Task 3");
-    let task4 = Task::new(4, "Task 4", "echo Hello from Task 4");
+    builder
+        .add_task(1, "Task 1", "echo Hello from Task 1")
+        .add_task(2, "Task 2", "echo Hello from Task 2")
+        .add_task(3, "Task 3", "echo Hello from Task 3")
+        .add_task(4, "Task 4", "echo Hello from Task 4")
+        .add_dependency("Task 1", "Task 3")
+        .add_dependency("Task 2", "Task 3")
+        .add_dependency("Task 3", "Task 4");
 
-    // Add tasks to the workflow and get their NodeIndex
-    let node1 = workflow.add_task(task1);
-    let node2 = workflow.add_task(task2);
-    let node3 = workflow.add_task(task3);
-    let node4 = workflow.add_task(task4);
-
-    // Define dependencies:
-    // - Task 3 depends on Task 1 and Task 2
-    // - Task 4 depends on Task 3
-    workflow.add_dependency(node1, node3);
-    workflow.add_dependency(node2, node3);
-    workflow.add_dependency(node3, node4);
-
-    // Create a scheduler and run the workflow
-    let scheduler = Scheduler::new();
-    if let Err(err) = scheduler.run(&mut workflow).await {
-        eprintln!("Error running workflow: {}", err);
+            // Save the workflow to a JSON file
+    if let Err(err) = builder.get_workflow().save_to_json("workflow.json") {
+        eprintln!("Error saving workflow: {}", err);
     }
+
+
+    // Export the workflow directly to a PNG image
+    builder.export_to_png("workflow.dot", "workflow.png");
+
+    // Run the workflow
+    builder.run();
 }
