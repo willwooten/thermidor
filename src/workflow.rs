@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{self, Write, Read};
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Workflow {
     pub graph: DiGraph<Task, ()>,
 }

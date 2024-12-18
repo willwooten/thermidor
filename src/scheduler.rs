@@ -15,8 +15,8 @@ impl Scheduler {
         Self
     }
 
-    /// Runs the tasks in the workflow based on their dependencies, with parallel execution.
-    pub async fn run(&self, workflow: &mut Workflow) -> Result<(), Error> {
+    /// Runs the tasks in the workflow based on their dependencies, with parallel execution and state persistence.
+    pub async fn run(&self, workflow: &mut Workflow, save_path: &str) -> Result<(), Error> {
         match toposort(&workflow.graph, None) {
             Ok(order) => {
                 let mut running_tasks: Vec<JoinHandle<NodeIndex>> = Vec::new();
@@ -33,17 +33,17 @@ impl Scheduler {
                         .all(|dep| completed.contains(&dep));
 
                     if all_deps_completed {
-                        let task = &mut workflow.graph[node];
+                        let task = workflow.graph[node].clone();
                         info!("Scheduling task: {}", task.name);
 
                         let handle = tokio::spawn({
-                            let task = task.clone();
+                            let mut task_clone = task.clone();
                             async move {
-                                let mut task = task.clone(); // Declare task as mutable
-                                if let Err(err) = task.execute().await {
-                                    error!("Task '{}' failed: {}", task.name, err);
+                                if let Err(err) = task_clone.execute().await {
+                                    error!("Task '{}' failed: {}", task_clone.name, err);
+                                } else {
+                                    info!("Task '{}' completed successfully.", task_clone.name);
                                 }
-                                info!("Task '{}' state: {:?}", task.name, task.state);
                                 node
                             }
                         });
@@ -55,7 +55,14 @@ impl Scheduler {
                     let completed_nodes = join_all(running_tasks.drain(..)).await;
                     for result in completed_nodes {
                         if let Ok(node) = result {
+                            // Update the graph with the modified task state
+                            workflow.graph[node] = workflow.graph[node].clone();
                             completed.insert(node);
+
+                            // Save the workflow state after each task execution
+                            if let Err(err) = workflow.save_to_json(&save_path) {
+                                error!("Failed to save workflow state: {}", err);
+                            }
                         }
                     }
                 }

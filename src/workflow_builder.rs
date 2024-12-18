@@ -39,12 +39,12 @@ impl WorkflowBuilder {
     }
 
     /// Runs the workflow using the scheduler.
-    pub fn run(&mut self) {
+    pub fn run(&mut self, save_path: &str) {
         let scheduler = Scheduler::new();
         let rt = Runtime::new().unwrap();
 
         rt.block_on(async {
-            if let Err(err) = scheduler.run(&mut self.workflow).await {
+            if let Err(err) = scheduler.run(&mut self.workflow, save_path).await {
                 eprintln!("Error running workflow: {}", err);
             }
         });
@@ -80,8 +80,17 @@ impl WorkflowBuilder {
         }
     }
 
-    /// Provides access to the workflow for saving or other operations.
-    pub fn get_workflow(&self) -> &Workflow {
-        &self.workflow
+    /// Provides a cloned copy of the workflow for saving or other operations.
+    pub fn get_workflow(&self) -> Workflow {
+        self.workflow.clone()
     }
+
+    /// Creates a WorkflowBuilder from an existing workflow.
+    pub fn from_workflow(workflow: Workflow) -> Self {
+        Self {
+            workflow,
+            task_indices: HashMap::new(), // You may need to reconstruct this map
+        }
+    }
+    
 }
