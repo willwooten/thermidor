@@ -13,19 +13,17 @@ pub async fn initialize_workflows() -> Vec<Arc<Mutex<Workflow>>> {
             (2, "Task 2", "echo Hello from Task 2"),
             (3, "Task 3", "echo Hello from Task 3"),
             (4, "Task 4", "echo Hello from Task 4"),
-            (5, "Long Task", "sleep 30"),
         ], vec![
             ("Task 1", "Task 3"),
             ("Task 2", "Task 3"),
             ("Task 3", "Task 4"),
-            ("Task 4", "Long Task"),
         ]),
 
         // Second example workflow
         // ("workflow2.json", vec![
-        //     (1, "Download Data", "curl -O https://example.com/data.csv"),
-        //     (2, "Process Data", "python process_data.py"),
-        //     (3, "Generate Report", "python generate_report.py"),
+        //     (1, "Download Data", "echo Hello from Task 5"),
+        //     (2, "Process Data", "echo Hello from Task 6"),
+        //     (3, "Generate Report", "echo Hello from Task 7"),
         // ], vec![
         //     ("Download Data", "Process Data"),
         //     ("Process Data", "Generate Report"),
