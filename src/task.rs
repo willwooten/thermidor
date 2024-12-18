@@ -103,8 +103,9 @@ impl Task {
                 break;
             }
 
-            info!("Retrying task '{}' in 2 seconds...", self.name);
-            sleep(Duration::from_secs(2)).await;
+            let retry_delay = Duration::from_secs(2u64.pow(self.retry_count as u32));
+            info!("Retrying task '{}' in {:?} seconds...", self.name, retry_delay);
+            sleep(retry_delay).await;            
         }
 
         Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Task '{}' failed after {} retries", self.name, self.retry_count)))
