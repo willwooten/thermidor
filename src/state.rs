@@ -6,4 +6,5 @@ pub enum TaskState {
     Running,
     Success,
     Failure,
+    Skipped
 }
