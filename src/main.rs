@@ -26,7 +26,7 @@ fn main() {
         .add_dependency("Task 2", "Task 3")
         .add_dependency("Task 3", "Task 4");
 
-            // Save the workflow to a JSON file
+    // Save the workflow to a JSON file
     if let Err(err) = builder.get_workflow().save_to_json("workflow.json") {
         eprintln!("Error saving workflow: {}", err);
     }
