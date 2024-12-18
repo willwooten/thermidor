@@ -3,48 +3,49 @@ mod task;
 mod workflow;
 mod state;
 mod workflow_builder;
+mod api;
+mod workflow_initializer;
 
+use axum::{
+    routing::get,
+    Router, 
+    Extension,
+};
+use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::fmt::init;
-use workflow::Workflow;
-use scheduler::Scheduler;
+use api::{list_tasks, get_task, get_workflow_status};
+use workflow_initializer::initialize_workflows;
 
-fn main() {
+
+#[tokio::main]
+async fn main() {
     // Initialize the tracing subscriber for logging
     init();
 
-    let save_path = "workflow.json";
+    // Initialize and run multiple workflows
+    let workflows = initialize_workflows().await;
 
-    // Load the workflow from a saved state or create a new one
-    let mut workflow = match Workflow::load_from_json(save_path) {
-        Ok(wf) => {
-            info!("Loaded workflow from '{}'", save_path);
-            wf
-        }
-        Err(_) => {
-            info!("Creating a new workflow.");
-            let mut builder = workflow_builder::WorkflowBuilder::new();
+    // Clone the first workflow for use in the API
+    let api_workflow = Arc::clone(&workflows[0]);
 
-            builder
-                .add_task(1, "Task 1", "echo Hello from Task 1")
-                .add_task(2, "Task 2", "echo Hello from Task 2")
-                .add_task(3, "Task 3", "echo Hello from Task 3")
-                .add_task(4, "Task 4", "echo Hello from Task 4")
-                .add_dependency("Task 1", "Task 3")
-                .add_dependency("Task 2", "Task 3")
-                .add_dependency("Task 3", "Task 4");
+    // Define the API routes
+    let app = Router::new()
+        .route("/", get(list_tasks))
+        .route("/task/:id", get(get_task))
+        .route("/workflow/status", get(get_workflow_status))
+        .layer(Extension(api_workflow));
 
-            builder.get_workflow().clone()
-        }
-    };
-
-    // Run the workflow and save state after each task
-    let scheduler = Scheduler::new();
-    let rt = tokio::runtime::Runtime::new().unwrap();
-
-    rt.block_on(async {
-        if let Err(err) = scheduler.run(&mut workflow, save_path).await {
-            eprintln!("Error running workflow: {}", err);
-        }
+    // Run the HTTP server
+    let addr = "0.0.0.0:3000".parse().unwrap();
+    info!("Listening on http://{}", addr);
+    let server_handle = tokio::spawn(async move {
+        axum::Server::bind(&addr)
+            .serve(app.into_make_service())
+            .await
+            .unwrap();
     });
+
+    // Wait for the server to complete
+    let _ = tokio::try_join!(server_handle);
 }

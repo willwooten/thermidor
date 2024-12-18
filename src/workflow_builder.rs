@@ -51,34 +51,34 @@ impl WorkflowBuilder {
     }
 
     /// Exports the workflow to a PNG image by generating a DOT file and running the dot command.
-    pub fn export_to_png(&self, dot_filename: &str, png_filename: &str) {
-        // Export the workflow to a DOT file
-        if let Err(err) = self.workflow.export_to_dot(dot_filename) {
-            eprintln!("Error exporting workflow to DOT file: {}", err);
-            return;
-        }
+    // pub fn export_to_png(&self, dot_filename: &str, png_filename: &str) {
+    //     // Export the workflow to a DOT file
+    //     if let Err(err) = self.workflow.export_to_dot(dot_filename) {
+    //         eprintln!("Error exporting workflow to DOT file: {}", err);
+    //         return;
+    //     }
 
-        // Generate the PNG using the dot command
-        let output = Command::new("dot")
-            .args(&["-Tpng", dot_filename, "-o", png_filename])
-            .output();
+    //     // Generate the PNG using the dot command
+    //     let output = Command::new("dot")
+    //         .args(&["-Tpng", dot_filename, "-o", png_filename])
+    //         .output();
 
-        match output {
-            Ok(result) => {
-                if result.status.success() {
-                    println!("Workflow exported to {}", png_filename);
-                } else {
-                    eprintln!(
-                        "Error running dot command: {}",
-                        String::from_utf8_lossy(&result.stderr)
-                    );
-                }
-            }
-            Err(err) => {
-                eprintln!("Failed to execute dot command: {}", err);
-            }
-        }
-    }
+    //     match output {
+    //         Ok(result) => {
+    //             if result.status.success() {
+    //                 println!("Workflow exported to {}", png_filename);
+    //             } else {
+    //                 eprintln!(
+    //                     "Error running dot command: {}",
+    //                     String::from_utf8_lossy(&result.stderr)
+    //                 );
+    //             }
+    //         }
+    //         Err(err) => {
+    //             eprintln!("Failed to execute dot command: {}", err);
+    //         }
+    //     }
+    // }
 
     /// Provides a cloned copy of the workflow for saving or other operations.
     pub fn get_workflow(&self) -> Workflow {

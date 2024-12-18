@@ -7,6 +7,7 @@ use tokio::task::JoinHandle;
 use tracing::{info, error};
 use futures::future::join_all;
 
+#[derive(Clone, Copy)]
 pub struct Scheduler;
 
 impl Scheduler {

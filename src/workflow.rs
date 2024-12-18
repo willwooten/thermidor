@@ -28,11 +28,11 @@ impl Workflow {
     }
 
     /// Exports the workflow to a DOT file.
-    pub fn export_to_dot(&self, filename: &str) -> io::Result<()> {
-        let dot = format!("{:?}", Dot::with_config(&self.graph, &[Config::EdgeNoLabel]));
-        let mut file = File::create(filename)?;
-        file.write_all(dot.as_bytes())
-    }
+    // pub fn export_to_dot(&self, filename: &str) -> io::Result<()> {
+    //     let dot = format!("{:?}", Dot::with_config(&self.graph, &[Config::EdgeNoLabel]));
+    //     let mut file = File::create(filename)?;
+    //     file.write_all(dot.as_bytes())
+    // }
 
     /// Saves the workflow to a JSON file.
     pub fn save_to_json(&self, filename: &str) -> io::Result<()> {
