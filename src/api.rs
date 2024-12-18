@@ -7,6 +7,17 @@ use tracing::info;
 use futures::future::join_all;
 use tower_http::cors::{CorsLayer, AllowOrigin, Any};
 
+/// Creates and configures the HTTP application router.
+///
+/// This function sets up the API routes and applies necessary middleware,
+/// such as CORS (Cross-Origin Resource Sharing) policies.
+///
+/// # Arguments
+/// - `workflows`: A thread-safe shared reference to the list of workflows, wrapped in `Arc<Mutex<...>>`
+///                to allow concurrent access across async tasks.
+///
+/// # Returns
+/// - `Router`: An Axum router with defined routes and middleware.
 pub fn create_app(workflows: Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>) -> Router {
     Router::new()
         .route("/workflows", get(list_tasks))
@@ -24,7 +35,14 @@ pub fn create_app(workflows: Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>) -> Router {
         )
 }
 
-/// Start the HTTP server.
+/// Starts the HTTP server and listens for incoming requests.
+///
+/// This function creates the application router by calling `create_app`
+/// and starts the Axum HTTP server bound to `0.0.0.0:3000`.
+///
+/// # Arguments
+/// - `workflows`: A thread-safe shared reference to the list of workflows, wrapped in `Arc<Mutex<...>>`
+///                to allow concurrent access across async tasks.
 pub async fn run_server(workflows: Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>) {
     let app = create_app(workflows);
 
@@ -37,6 +55,35 @@ pub async fn run_server(workflows: Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>) {
         .unwrap();
 }
 
+/// Lists all tasks from all workflows.
+///
+/// This asynchronous function retrieves all tasks from each workflow, including their
+/// IDs, names, and states. The function responds with a JSON array containing task details.
+///
+/// # Arguments
+/// - `Extension(workflows)`: An Axum `Extension` that provides a thread-safe, shared reference
+///   to the vector of workflows (`Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>>`).
+///
+/// # Returns
+/// - `impl IntoResponse`: A JSON response containing a list of all tasks across all workflows.
+///
+/// # Example Response
+/// ```json
+/// [
+///     {
+///         "workflow_id": 0,
+///         "task_id": 1,
+///         "name": "Task 1",
+///         "state": "Pending"
+///     },
+///     {
+///         "workflow_id": 1,
+///         "task_id": 2,
+///         "name": "Task 2",
+///         "state": "Success"
+///     }
+/// ]
+/// ```
 pub async fn list_tasks(
     Extension(workflows): Extension<Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>>,
 ) -> impl IntoResponse {
@@ -48,9 +95,9 @@ pub async fn list_tasks(
         let wf = wf.lock().await;
         let tasks: Vec<_> = wf.graph.node_weights().map(|task| {
             json!({
-                "workflow_id": i,
-                "task_id": task.id,
-                "name": task.name,
+                "workflow_id": i,                     
+                "task_id": task.id,                   
+                "name": task.name,                    
                 "state": format!("{:?}", task.state),
             })
         }).collect();
@@ -61,7 +108,35 @@ pub async fn list_tasks(
     Json(all_tasks)
 }
 
-
+/// Retrieves details of a specific task within a specific workflow.
+///
+/// This asynchronous function takes the workflow ID and task ID from the request path,
+/// and returns detailed information about the task if found. If the task is not found,
+/// it returns a 404 error.
+///
+/// # Arguments
+/// - `Path((workflow_id, task_id))`: Extracts the `workflow_id` and `task_id` from the URL path.
+/// - `Extension(workflows)`: An Axum `Extension` that provides a thread-safe, shared reference
+///   to the vector of workflows (`Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>>`).
+///
+/// # Returns
+/// - `impl IntoResponse`: A JSON response containing task details if found, or a 404 error if not.
+///
+/// # Example URL
+/// ```
+/// GET /workflow/0/task/1
+/// ```
+///
+/// # Example Response
+/// ```json
+/// {
+///     "workflow_id": 0,
+///     "task_id": 1,
+///     "name": "Task 1",
+///     "command": "echo Hello from Task 1",
+///     "state": "Pending"
+/// }
+/// ```
 pub async fn get_task(
     Path((workflow_id, task_id)): Path<(usize, usize)>,
     Extension(workflows): Extension<Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>>,
@@ -86,7 +161,34 @@ pub async fn get_task(
 }
 
 
-// Get the status of the entire workflow
+/// Retrieves the status of a specific workflow.
+///
+/// This asynchronous function takes a `workflow_id` from the request path and returns the
+/// overall status of the workflow based on the states of its tasks. If the workflow is not found,
+/// it returns a 404 error.
+///
+/// # Arguments
+/// - `Path(workflow_id)`: Extracts the `workflow_id` from the URL path.
+/// - `Extension(workflows)`: An Axum `Extension` that provides a thread-safe, shared reference
+///   to the vector of workflows (`Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>>`).
+///
+/// # Returns
+/// - `impl IntoResponse`: A JSON response containing the workflow status and the states of its tasks,
+///   or a 404 error if the workflow is not found.
+///
+/// # Example URL
+/// ```
+/// GET /workflow/0/status
+/// ```
+///
+/// # Example Response
+/// ```json
+/// {
+///     "workflow_id": 0,
+///     "status": "In Progress",
+///     "tasks": ["Pending", "Running", "Success"]
+/// }
+/// ```
 pub async fn get_workflow_status(
     Path(workflow_id): Path<usize>,
     Extension(workflows): Extension<Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>>,
@@ -120,7 +222,36 @@ pub async fn get_workflow_status(
     (StatusCode::NOT_FOUND, Json(json!({ "error": "Workflow not found" }))).into_response()
 }
 
-
+/// Generates a graph representation of all workflows.
+///
+/// This asynchronous function creates a graph structure for each workflow, consisting of tasks (nodes)
+/// and their dependencies (edges). The function returns a JSON response containing the graph data
+/// for all workflows.
+///
+/// # Arguments
+/// - `Extension(workflows)`: An Axum `Extension` that provides a thread-safe, shared reference
+///   to the vector of workflows (`Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>>`).
+///
+/// # Returns
+/// - `Json<serde_json::Value>`: A JSON response containing the graph data of all workflows.
+///
+/// # Example Response
+/// ```json
+/// {
+///     "workflows": [
+///         {
+///             "workflow_id": 0,
+///             "nodes": [
+///                 { "id": 1, "name": "Task 1" },
+///                 { "id": 2, "name": "Task 2" }
+///             ],
+///             "edges": [
+///                 { "from": 1, "to": 2 }
+///             ]
+///         }
+///     ]
+/// }
+/// ```
 pub async fn get_workflow_graph(
     Extension(workflows): Extension<Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>>,
 ) -> Json<serde_json::Value> {
