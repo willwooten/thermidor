@@ -14,12 +14,14 @@ use tracing::info;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Workflow {
     pub graph: DiGraph<Task, ()>,
+    pub resumed: bool,
 }
 
 impl Workflow {
     pub fn new() -> Self {
         Self {
             graph: DiGraph::new(),
+            resumed: false,
         }
     }
 
@@ -52,7 +54,8 @@ impl Workflow {
         let mut file = File::open(filename)?;
         let mut content = String::new();
         file.read_to_string(&mut content)?;
-        let workflow = serde_json::from_str(&content)?;
+        let mut workflow: Workflow = serde_json::from_str(&content)?;
+        workflow.resumed = true; // Mark the workflow as resumed
         Ok(workflow)
     }
 }
@@ -175,22 +178,22 @@ pub async fn schedule_workflow() -> Vec<(Arc<Mutex<Workflow>>, String)> {
                 Err(_) => {
                     info!("Creating a new workflow for '{}'", save_path);
                     let mut builder = WorkflowBuilder::new();
-
+    
                     // Add tasks
                     for (id, name, command) in tasks {
                         builder.add_task(id, name, command);
                     }
-
+    
                     // Add dependencies
                     for (from, to) in dependencies {
                         builder.add_dependency(from, to);
                     }
-
+    
                     builder.get_workflow()
                 }
             },
         ));
-
+    
         workflows.push((workflow, save_path.to_string()));
     }
 

@@ -47,14 +47,24 @@ impl Scheduler {
                 fs::create_dir_all(parent_dir)?;
             }
         }
-    
-        // Reset all tasks to Pending state at the start
-        for node in workflow.graph.node_indices() {
-            workflow.graph[node].state = TaskState::Pending;
-        }
-    
+
+        // Track completed tasks for resumed workflows
         let mut completed = HashSet::new();
-    
+
+        for node in workflow.graph.node_indices() {
+            match workflow.graph[node].state {
+                TaskState::Success => {
+                    // Mark already completed tasks as completed
+                    completed.insert(node);
+                }
+                TaskState::Failure => {
+                    // Reset failed or skipped tasks to Pending
+                    workflow.graph[node].state = TaskState::Pending;
+                }
+                _ => {} // Leave Pending and Running tasks as they are
+            }
+        }
+   
         loop {
             let mut running_tasks: Vec<JoinHandle<Result<(NodeIndex, TaskState), String>>> = Vec::new();
             let mut progress_made = false;
