@@ -1,12 +1,12 @@
 use crate::workflow::Workflow;
-use axum::{extract::Path, http::StatusCode, response::IntoResponse, Json, Extension, Router, routing::get};
+use axum::{debug_handler, extract::Path, http::StatusCode, response::IntoResponse, Json, Extension, Router, routing::get, routing::post};
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
 use futures::future::join_all;
 use tower_http::cors::{CorsLayer, AllowOrigin, Any};
-
+use crate::task::NewTask;
 
 pub fn create_app(workflows: Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>) -> Router {
     Router::new()
@@ -15,6 +15,7 @@ pub fn create_app(workflows: Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>) -> Router {
         .route("/workflow/:workflow_id/status", get(get_workflow_status))
         .route("/workflow/graph", get(get_workflow_graph))
         .route("/workflow/:workflow_id/timeline", get(get_execution_timeline)) // Add this line
+        .route("/workflow/task/add", post(add_task))
         .layer(Extension(workflows))
         .layer(
             CorsLayer::new()
@@ -210,6 +211,37 @@ pub async fn get_execution_timeline(
         }).collect();
 
         return Json(json!({ "workflow_id": workflow_id, "timeline": timeline })).into_response();
+    }
+
+    (StatusCode::NOT_FOUND, Json(json!({ "error": "Workflow not found" }))).into_response()
+}
+#[debug_handler]
+pub async fn add_task(
+    Extension(workflows): Extension<Arc<tokio::sync::Mutex<Vec<Arc<Mutex<Workflow>>>>>>,
+    Json(new_task): Json<NewTask>,
+) -> impl IntoResponse {
+    let workflows = workflows.lock().await;
+
+    // For simplicity, we'll add the task to the first workflow.
+    if let Some(workflow) = workflows.get(0) {
+        let mut workflow = workflow.lock().await;
+
+        // Add the new task.
+        let node_index = workflow.add_task_dynamically(new_task.id, &new_task.name, &new_task.command);
+
+        // Add dependencies.
+        for dependency_id in new_task.dependencies {
+            if let Err(err) = workflow.add_dependency_dynamically(dependency_id, new_task.id) {
+                return (StatusCode::BAD_REQUEST, Json(json!({ "error": err }))).into_response();
+            }
+        }
+
+        return Json(json!({
+            "message": "Task added successfully",
+            "task_id": new_task.id,
+            "node_index": node_index.index()
+        }))
+        .into_response();
     }
 
     (StatusCode::NOT_FOUND, Json(json!({ "error": "Workflow not found" }))).into_response()

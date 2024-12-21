@@ -58,6 +58,26 @@ impl Workflow {
         workflow.resumed = true; // Mark the workflow as resumed
         Ok(workflow)
     }
+
+    /// Adds a task dynamically and returns the NodeIndex.
+    pub fn add_task_dynamically(&mut self, id: usize, name: &str, command: &str) -> NodeIndex {
+        let task = Task::new(id, name, command);
+        self.add_task(task)
+    }
+
+    /// Adds a dependency dynamically.
+    pub fn add_dependency_dynamically(&mut self, from: usize, to: usize) -> Result<(), String> {
+        let from_node = self.graph.node_indices().find(|&node| self.graph[node].id == from);
+        let to_node = self.graph.node_indices().find(|&node| self.graph[node].id == to);
+
+        if let (Some(from_idx), Some(to_idx)) = (from_node, to_node) {
+            self.add_dependency(from_idx, to_idx);
+            Ok(())
+        } else {
+            Err("One or both tasks not found".to_string())
+        }
+    }
+    
 }
 
 pub struct WorkflowBuilder {

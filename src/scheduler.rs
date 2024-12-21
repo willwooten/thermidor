@@ -58,8 +58,9 @@ impl Scheduler {
                     completed.insert(node);
                 }
                 TaskState::Failure => {
+                    // Handle failed tasks loaded from json
                     // Reset failed or skipped tasks to Pending
-                    workflow.graph[node].state = TaskState::Pending;
+                    //  workflow.graph[node].state = TaskState::Pending;
                 }
                 _ => {} // Leave Pending and Running tasks as they are
             }

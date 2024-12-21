@@ -19,6 +19,14 @@ pub struct Task {
     pub end_time: Option<DateTime<Utc>>,
 }
 
+#[derive(Deserialize)]
+pub struct NewTask {
+    pub id: usize,
+    pub name: String,
+    pub command: String,
+    pub dependencies: Vec<usize>,
+}
+
 impl Task {
     /// Creates a new task with the specified id, name, command, and max retries.
     pub fn new(id: usize, name: &str, command: &str) -> Self {
