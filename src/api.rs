@@ -14,6 +14,7 @@ pub fn create_app(workflows: Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>) -> Router {
         .route("/workflow/:workflow_id/task/:id", get(get_task))
         .route("/workflow/:workflow_id/status", get(get_workflow_status))
         .route("/workflow/graph", get(get_workflow_graph))
+        .route("/workflow/:workflow_id/timeline", get(get_execution_timeline)) // Add this line
         .layer(Extension(workflows))
         .layer(
             CorsLayer::new()
@@ -187,4 +188,29 @@ pub async fn get_workflow_graph(
     let graph_data = join_all(futures).await;
 
     Json(json!({ "workflows": graph_data }))
+}
+
+
+pub async fn get_execution_timeline(
+    Path(workflow_id): Path<usize>,
+    Extension(workflows): Extension<Arc<Mutex<Vec<Arc<Mutex<Workflow>>>>>>,
+) -> impl IntoResponse {
+    let workflows = workflows.lock().await;
+
+    if let Some(workflow) = workflows.get(workflow_id) {
+        let workflow = workflow.lock().await;
+        let timeline: Vec<_> = workflow.graph.node_weights().map(|task| {
+            json!({
+                "task_id": task.id,
+                "name": task.name,
+                "start_time": task.start_time,
+                "end_time": task.end_time,
+                "duration": task.end_time.map(|end| (end - task.start_time.unwrap_or(end)).num_seconds())
+            })
+        }).collect();
+
+        return Json(json!({ "workflow_id": workflow_id, "timeline": timeline })).into_response();
+    }
+
+    (StatusCode::NOT_FOUND, Json(json!({ "error": "Workflow not found" }))).into_response()
 }
