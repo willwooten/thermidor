@@ -3,13 +3,6 @@
 
 **Thermidor** is a data orchestration tool written in **Rust**. It allows you to define, schedule, and execute data workflows with dependencies between tasks, ensuring efficient and reliable task execution.
 
-Thermidor supports:
-
-- **Parallel Task Execution** with dependency management.
-- **Retry Logic** for tasks with configurable attempts.
-- **State Persistence** to save and load workflow states.
-- **HTTP API** to interact with workflows and tasks.
-
 ---
 
 ## Features
