@@ -1,6 +1,7 @@
 use crate::task::Task;
 use crate::scheduler::Scheduler;
 use petgraph::graph::{DiGraph, NodeIndex};
+use sqlx::{PgPool, Row};
 use std::fs::File;
 use std::io::{self, Write, Read};
 use std::sync::Arc;
@@ -9,7 +10,6 @@ use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
 use tokio::task;
 use tracing::info;
-
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Workflow {
@@ -35,13 +35,6 @@ impl Workflow {
         self.graph.add_edge(from, to, ());
     }
 
-    /// Exports the workflow to a DOT file.
-    // pub fn export_to_dot(&self, filename: &str) -> io::Result<()> {
-    //     let dot = format!("{:?}", Dot::with_config(&self.graph, &[Config::EdgeNoLabel]));
-    //     let mut file = File::create(filename)?;
-    //     file.write_all(dot.as_bytes())
-    // }
-
     /// Saves the workflow to a JSON file.
     pub fn save_to_json(&self, filename: &str) -> io::Result<()> {
         let json = serde_json::to_string_pretty(&self)?;
@@ -59,6 +52,56 @@ impl Workflow {
         Ok(workflow)
     }
 
+    pub async fn load_from_sql(pool: &PgPool, workflow_id: i64) -> io::Result<Self> {
+        // Fetch the workflow data
+        let row = sqlx::query("SELECT id, name FROM workflows.workflows WHERE id = $1")
+            .bind(workflow_id)
+            .fetch_one(pool)
+            .await
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+        let mut workflow = Workflow::new();
+
+        // Fetch tasks for this workflow
+        let task_rows = sqlx::query(
+            "SELECT id, task_name, command FROM workflows.tasks WHERE workflow_id = $1"
+        )
+        .bind(workflow_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+        // Add tasks to the workflow
+        for task_row in task_rows {
+            let task_id: i64 = task_row.get("id");
+            let task_name: String = task_row.get("task_name");
+            let task_command: String = task_row.get("command");
+
+            workflow.add_task_dynamically(task_id as usize, &task_name, &task_command);
+        }
+
+        // Fetch dependencies for this workflow
+        let dependency_rows = sqlx::query(
+            "SELECT from_task_idx, to_task_idx FROM workflows.dependencies WHERE workflow_id = $1"
+        )
+        .bind(workflow_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+        // Add dependencies to the workflow
+        for dependency_row in dependency_rows {
+            let from_task_idx: i64 = dependency_row.get("from_task_idx");
+            let to_task_idx: i64 = dependency_row.get("to_task_idx");
+
+            workflow.add_dependency_dynamically(from_task_idx as usize, to_task_idx as usize)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        }
+
+        workflow.resumed = true; // Mark the workflow as resumed
+        Ok(workflow)
+    }
+    
     /// Adds a task dynamically and returns the NodeIndex.
     pub fn add_task_dynamically(&mut self, id: usize, name: &str, command: &str) -> NodeIndex {
         let task = Task::new(id, name, command);
@@ -112,60 +155,10 @@ impl WorkflowBuilder {
         self
     }
 
-    /// Runs the workflow using the scheduler.
-    // pub fn run(&mut self, save_path: &str) {
-    //     let scheduler = Scheduler::new();
-    //     let rt = Runtime::new().unwrap();
-
-    //     rt.block_on(async {
-    //         if let Err(err) = scheduler.run(&mut self.workflow, save_path).await {
-    //             eprintln!("Error running workflow: {}", err);
-    //         }
-    //     });
-    // }
-
-    /// Exports the workflow to a PNG image by generating a DOT file and running the dot command.
-    // pub fn export_to_png(&self, dot_filename: &str, png_filename: &str) {
-    //     // Export the workflow to a DOT file
-    //     if let Err(err) = self.workflow.export_to_dot(dot_filename) {
-    //         eprintln!("Error exporting workflow to DOT file: {}", err);
-    //         return;
-    //     }
-
-    //     // Generate the PNG using the dot command
-    //     let output = Command::new("dot")
-    //         .args(&["-Tpng", dot_filename, "-o", png_filename])
-    //         .output();
-
-    //     match output {
-    //         Ok(result) => {
-    //             if result.status.success() {
-    //                 println!("Workflow exported to {}", png_filename);
-    //             } else {
-    //                 eprintln!(
-    //                     "Error running dot command: {}",
-    //                     String::from_utf8_lossy(&result.stderr)
-    //                 );
-    //             }
-    //         }
-    //         Err(err) => {
-    //             eprintln!("Failed to execute dot command: {}", err);
-    //         }
-    //     }
-    // }
-
     /// Provides a cloned copy of the workflow for saving or other operations.
     pub fn get_workflow(&self) -> Workflow {
         self.workflow.clone()
     }
-
-    // Creates a WorkflowBuilder from an existing workflow.
-    // pub fn from_workflow(workflow: Workflow) -> Self {
-    //     Self {
-    //         workflow,
-    //         task_indices: HashMap::new(), // You may need to reconstruct this map
-    //     }
-    // }
     
 }
 
@@ -188,15 +181,15 @@ pub async fn schedule_workflow() -> Vec<(Arc<Mutex<Workflow>>, String)> {
 
     let mut workflows = Vec::new();
 
-    for (save_path, tasks, dependencies) in workflows_data {
+    for (workflow_name, tasks, dependencies) in workflows_data {
         let workflow = Arc::new(Mutex::new(
-            match Workflow::load_from_json(save_path) {
+            match Workflow::load_from_json(workflow_name) {
                 Ok(wf) => {
-                    info!("Loaded workflow from '{}'", save_path);
+                    info!("Loaded workflow from '{}'", workflow_name);
                     wf
                 }
                 Err(_) => {
-                    info!("Creating a new workflow for '{}'", save_path);
+                    info!("Creating a new workflow for '{}'", workflow_name);
                     let mut builder = WorkflowBuilder::new();
     
                     // Add tasks
@@ -214,7 +207,7 @@ pub async fn schedule_workflow() -> Vec<(Arc<Mutex<Workflow>>, String)> {
             },
         ));
     
-        workflows.push((workflow, save_path.to_string()));
+        workflows.push((workflow, workflow_name.to_string()));
     }
 
     workflows

@@ -3,8 +3,9 @@ use crate::state::TaskState;
 use crate::task::Task;
 use petgraph::algo::toposort;
 use petgraph::graph::NodeIndex;
+use sqlx::PgPool;
 use std::collections::HashSet;
-use std::io::{Error, Write};
+use std::io::{self, Error, Write};
 use tokio::task::JoinHandle;
 use tracing::{info, error};
 use futures::future::join_all;
@@ -128,5 +129,87 @@ impl Scheduler {
         }
     
         Ok(())
-    }    
+    }
+
+    // pub async fn run2(&self, workflow: &mut Workflow, pool: &PgPool) -> Result<(), io::Error> {
+    //     // Track completed tasks for resumed workflows
+    //     let mut completed = HashSet::new();
+
+    //     for node in workflow.graph.node_indices() {
+    //         match workflow.graph[node].state {
+    //             TaskState::Success => {
+    //                 // Mark already completed tasks as completed
+    //                 completed.insert(node);
+    //             }
+    //             TaskState::Failure => {
+    //                 // Reset failed or skipped tasks to Pending
+    //                 workflow.graph[node].state = TaskState::Pending;
+    //             }
+    //             _ => {} // Leave Pending and Running tasks as they are
+    //         }
+    //     }
+
+    //     loop {
+    //         let mut running_tasks: Vec<JoinHandle<Result<(NodeIndex, TaskState), String>>> = Vec::new();
+    //         let mut progress_made = false;
+
+    //         match toposort(&workflow.graph, None) {
+    //             Ok(order) => {
+    //                 for node in order {
+    //                     running_tasks.retain(|handle| !handle.is_finished());
+
+    //                     if workflow.graph[node].state == TaskState::Pending || workflow.graph[node].state == TaskState::Skipped {
+    //                         let all_deps_completed = workflow
+    //                             .graph
+    //                             .neighbors_directed(node, petgraph::Incoming)
+    //                             .all(|dep| completed.contains(&dep));
+
+    //                         if all_deps_completed {
+    //                             let task = workflow.graph[node].clone();
+    //                             let handle = tokio::spawn(Self::execute_task(node, task));
+    //                             running_tasks.push(handle);
+    //                             progress_made = true;
+    //                         } else {
+    //                             info!("Skipping task: {} due to incomplete dependencies", workflow.graph[node].name);
+    //                             workflow.graph[node].state = TaskState::Skipped;
+    //                         }
+    //                     }
+    //                 }
+
+    //                 // Collect completed tasks
+    //                 let completed_nodes = join_all(running_tasks).await;
+    //                 for result in completed_nodes {
+    //                     match result {
+    //                         Ok(Ok((node, state))) => {
+    //                             workflow.graph[node].state = state;
+    //                             completed.insert(node);
+
+    //                             // Upsert the workflow state after each task execution
+    //                             if let Err(err) = workflow.upsert_to_sql(pool, workflow_id).await {
+    //                                 error!("Failed to upsert workflow state: {}", err);
+    //                             }
+    //                         }
+    //                         Ok(Err(err)) => {
+    //                             error!("Task execution error: {}", err);
+    //                         }
+    //                         Err(join_err) => {
+    //                             error!("Join error: {}", join_err);
+    //                         }
+    //                     }
+    //                 }
+
+    //                 // If no progress was made and there are still skipped tasks, break the loop
+    //                 if !progress_made {
+    //                     break;
+    //                 }
+    //             }
+    //             Err(err) => {
+    //                 error!("Cycle detected in workflow: {:?}", err);
+    //                 return Err(io::Error::new(io::ErrorKind::Other, "Cycle detected in workflow"));
+    //             }
+    //         }
+    //     }
+
+    //     Ok(())
+    // }    
 }
